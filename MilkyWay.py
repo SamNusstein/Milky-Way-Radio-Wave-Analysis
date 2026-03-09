@@ -9,7 +9,7 @@ import pandas as pd
 c = 299792.458
 f0 = 1420.40575
 folder_name="Milky Way"
-# folder_name= input("Enter the folder name to process: ").strip()
+folder_name= input("Enter the folder name to process: ").strip()
 degree_inclusion= input("Include only files with longitude in this range (e.g., -10,10) or press Enter to include all: ").strip()
 if degree_inclusion:
     try:
@@ -165,3 +165,4 @@ if continue_analysis == 'y':
     plt.title("Measured Galactic Rotation Curve")
     plt.grid(True)
     plt.show()
+
