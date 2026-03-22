@@ -2,146 +2,107 @@ import numpy as np
 import glob
 import re
 import matplotlib.pyplot as plt
-from scipy.ndimage import gaussian_filter1d
 import pandas as pd
+from scipy.interpolate import RectBivariateSpline
+import progressbar
+
 
 
 c = 299792.458
 f0 = 1420.40575
-folder_name="Milky Way"
-folder_name= input("Enter the folder name to process: ").strip()
-degree_inclusion= input("Include only files with longitude in this range (e.g., -10,10) or press Enter to include all: ").strip()
-if degree_inclusion:
-    try:
-        lon_min, lon_max = map(float, degree_inclusion.split(','))
-        if lon_min > lon_max:
-            print("Error: Minimum longitude must be less than maximum longitude.")
-            exit(1)
-    except ValueError:
-        print("Error: Invalid input for longitude range. Please enter two numbers separated by a comma.")
-        exit(1)
-files = sorted(glob.glob(f"{folder_name}/*.cal.txt"))
-if degree_inclusion:
-    filtered_files = []
-    for f in files:
-        m = re.search(r"GLONG_(\d+)", f)
-        if m:
-            lon = float(m.group(1))
-            if lon_min <= lon <= lon_max:
-                filtered_files.append(f)
+path="Milky Way"
+
+files = sorted(glob.glob(f"{path}/*.cal.txt"))
+
+filtered_files = []
+for f in files:
+    m = re.search(r"GLONG_(\d+)", f)
+    if m:
+        lon = float(m.group(1))
+        filtered_files.append(f)
     files = filtered_files
+filtered_files=filtered_files.sort(key=lambda x: float(re.search(r"GLONG_(\d+)", x).group(1)))
 
 longitudes = []
 spectra = []
 vel_axis = None
+temp=pd.DataFrame()
+
+
+
+        
 
 for f in files:
     m = re.search(r"GLONG_(\d+)", f)
     lon = float(m.group(1))
     longitudes.append(lon)
 
-    # tsys= pd.
-
-
-    # print(tsys)
-
-    # print(f"Processing {f} with Tsys: {tsys}")
-
-    # tsys_xx1 = tsys[0]
-    # tsys_yy1 = tsys[1]
-    # tsys_xx2 = tsys[2]
-    # tsys_yy2 = tsys[3]
-
-
-
     data = np.loadtxt(f, comments='#')
     freq = data[:,0]
     
     xx = data[:,1]
     yy = data[:,2]
-    freq2 = data[:,3] 
-    X2 = data[:,4]
-    Y2 = data[:,5]
-   
-    # I=(xx/tsys_xx1 + yy/tsys_yy1) / 2.0
-    I1=(xx + yy) / 2.0
-    I2=(X2 + Y2) / 2.0
-    I = (I1 + I2) / 2.0
+    I=(xx + yy) / 2.0
+    if len(temp) == 0:
+        temp = pd.DataFrame({'Frequency': freq, 'Intensity'+' '+str(lon): I})
+    else:
+        temp['Intensity'+' '+str(lon)] = I
 
-    vel1 = c * (f0 - freq) / f0
-    vel2 = c * (f0 - freq2) / f0
-
-
-    # vel_combined = np.concatenate([vel1, vel2]) 
-    # I_combined = np.concatenate([I1, I2])
-    vel_combined = vel1
-    I_combined = I
-
-
-
-    idx = np.argsort(vel_combined)
-    vel_combined = vel_combined[idx]
-    I_combined   = I_combined[idx]
-    spectra.append(I_combined)
+    spectra.append(I)
     if vel_axis is None:
-        vel_axis = vel_combined
+        vel = c * (f0 - freq )/ f0
+        vel_axis = vel
+        temp['Velocity'] = vel
 
+temp = temp[['Frequency', 'Velocity'] + [col for col in temp.columns if col.startswith('Intensity')]]
+temp.set_index(['Frequency','Velocity'],inplace=True,append=True)
+ahhh=pd.DataFrame()
+progress=progressbar.ProgressBar(maxval=(90*920))
+progress.start()
+total=0
+for col in temp.columns:
+    app=[]
+
+    for i in range(len(temp[col])-1):
+        app.append(np.abs(temp[col].loc[i]-temp[col].loc[i+1]))
+        total+=1
+        progress.update(total)
+    ahhh[col]=app
+progress.finish()
+
+print(ahhh.max())
 
 longitudes = np.array(longitudes)
 spectra = np.array(spectra)
 vel_axis = np.array(vel_axis)
-
+   
 idx = np.argsort(longitudes)
 longitudes = longitudes[idx]
 spectra = spectra[idx]
 
-def find_terminal_velocity(vel, I, threshold_factor=0.25):
-    peak = np.max(I)
-    threshold = threshold_factor * peak
+#get row for max frequency :)
+v_r=temp    
 
 
-    mask = vel > 0
-    vel_pos = vel[mask]
-    I_pos = I[mask]
-
-    good = np.where(I_pos > threshold)[0]
-    if len(good) == 0:
-        return np.nan
-
-    return vel_pos[good].max()
+def find_v_r(vel_axis, spectra):
 
 
+    return vel_axis[np.argmax(spectra, axis=1)]
 
 
-
-terminal_velocities = [
-    find_terminal_velocity(vel_axis, spec)
-    for spec in spectra
-]
-
-plt.figure(figsize=(12,6))
-plt.imshow(
-    spectra.T,
-    aspect='auto',
-    origin='lower',
-    extent=[longitudes.min(), longitudes.max(), vel_axis.min(), vel_axis.max()],
-    cmap='inferno'
-)
-plt.xlabel("Galactic Longitude (deg)")
-plt.ylabel("Velocity (km/s)")
-plt.title("HI Galactic Plane: Longitude-Velocity Map")
-plt.colorbar(label="Brightness")
-plt.show()
 
 #Limit velocities to -/+ 200 km/s for better visualization
+vel_mask = (vel_axis >= -200) & (vel_axis <= 200)
+vel_axis_zoom = vel_axis[vel_mask]
+spectra_zoom = spectra[:, vel_mask]
+
 plt.figure(figsize=(12,6))
 plt.imshow(
-    spectra.T,
+    spectra_zoom.T,
     aspect='auto',
     origin='lower',
-    extent=[longitudes.min(), longitudes.max(), -200, 200],
-    cmap='inferno'
-)
+    extent=[longitudes.min(), longitudes.max(), vel_axis_zoom.min(), vel_axis_zoom.max()],
+    cmap='inferno')
 plt.xlabel("Galactic Longitude (deg)")
 plt.ylabel("Velocity (km/s)")
 plt.title("HI Galactic Plane: Longitude-Velocity Map (Zoomed)")
@@ -151,17 +112,16 @@ plt.show()
 
 continue_analysis = input("Do you want to plot the rotation curve? (y/n): ").strip().lower()
 if continue_analysis == 'y':
-    R0 = 8.0
-    Theta0 = 220
+    R0 = 8000 #pc
+    V0=220 #km/s
 
-    l_rad = np.deg2rad(longitudes)
-    R = R0 * np.sin(l_rad)
-    Theta = np.array(terminal_velocities) + Theta0 * np.sin(l_rad)
+    R = R0 * np.sin(longitudes)
+    V = np.array(find_v_r(vel_axis, spectra)) + V0 * np.sin(longitudes)
 
     plt.figure()
-    plt.scatter(R, Theta)
-    plt.xlabel("Galactocentric Radius R (kpc)")
-    plt.ylabel("Rotation Speed Θ(R) (km/s)")
+    plt.scatter(R, V)
+    plt.xlabel("Galactocentric Radius R (pc)")
+    plt.ylabel("Rotation Speed V(R) (km/s)")
     plt.title("Measured Galactic Rotation Curve")
     plt.grid(True)
     plt.show()
