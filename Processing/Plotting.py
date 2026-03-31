@@ -250,12 +250,12 @@ def spectra_plot(data):
     spectra.set_index('Velocity',drop=True,inplace=True)
     vel_axis=data['Velocity']
 
-    intensity_cols = [c for c in data.columns if c in [i for i in range(0,91)]]
+    intensity_cols = [c for c in data.columns if isinstance(c, (int, float))]
     spectra = data[intensity_cols].to_numpy()
 
     vel_mask= (vel_axis >= -200) & (vel_axis <= 200)
     vel_axis_zoom= vel_axis[vel_mask]
-    spectra_zoom = data[vel_mask]
+    spectra_zoom = spectra[vel_mask]
 
     fig, ax = plt.subplots(figsize=(13, 6))
     fig.patch.set_facecolor(DARK_BG)
